@@ -1,0 +1,60 @@
+spring:
+  threads:
+    virtual:
+      enabled: true # Java 21 가상 스레드 활성화
+
+  datasource:
+    # localhost:5432는 기본 포트, deepdive는 우리가 만든 DB 이름입니다.
+    url: jdbc:postgresql://localhost:5432/deepdive
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # 개발 초기에는 update를 사용해 엔티티 수정 시 테이블에 자동 반영되게 합니다.
+      ddl-auto: update
+    properties:
+      hibernate:
+        # PostgreSQL 방언 설정 (버전에 맞춰 최적화된 SQL 생성)
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: true # 터미널에 실행되는 SQL 로그를 보여줍니다.
+
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: gpt-5-nano
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: email, profile
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  packages-to-scan: me.dohyeon.deepdive
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiration: 1800000      # 30분 (ms)
+    refresh-token-expiration: 1209600000  # 14일 (ms)
+    signup-token-expiration: 600000       # 10분 (ms)
+  cookie:
+    secure: false  # 운영 환경(HTTPS)에서는 true로 설정
+  frontend:
+    main-url: http://localhost:3000
+    signup-url: http://localhost:3000/signup
+
