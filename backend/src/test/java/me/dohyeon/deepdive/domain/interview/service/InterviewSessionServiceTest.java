@@ -1,7 +1,9 @@
 package me.dohyeon.deepdive.domain.interview.service;
 
+import me.dohyeon.deepdive.domain.interview.dto.InProgressSessionResponse;
 import me.dohyeon.deepdive.domain.interview.dto.SessionSummaryResponse;
 import me.dohyeon.deepdive.domain.interview.entity.InterviewCategory;
+import me.dohyeon.deepdive.domain.interview.entity.InterviewQuestion;
 import me.dohyeon.deepdive.domain.interview.entity.InterviewSession;
 import me.dohyeon.deepdive.domain.interview.entity.InterviewStatus;
 import me.dohyeon.deepdive.domain.interview.repository.AiFeedbackRepository;
@@ -19,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -54,6 +57,60 @@ class InterviewSessionServiceTest {
 
   @InjectMocks
   private InterviewSessionService interviewSessionService;
+
+  // ============================================================
+  // getInProgressSessions() 테스트
+  // ============================================================
+
+  @Test
+  @DisplayName("진행 중 세션 조회 - 세션과 현재 질문(마지막 sequence)을 반환한다")
+  void getInProgressSessions_returnsSessions() {
+    // given
+    Long memberId = 1L;
+
+    InterviewSession session = mock(InterviewSession.class);
+    when(session.getId()).thenReturn(10L);
+    when(session.getCategory()).thenReturn(InterviewCategory.OS);
+
+    InterviewQuestion currentQuestion = mock(InterviewQuestion.class);
+    when(currentQuestion.getId()).thenReturn(3L);
+    when(currentQuestion.getContent()).thenReturn("프로세스와 스레드의 차이를 설명해주세요.");
+    when(currentQuestion.getSequence()).thenReturn(3);
+
+    when(sessionRepository.findByMemberIdAndStatus(memberId, InterviewStatus.IN_PROGRESS))
+        .thenReturn(List.of(session));
+    when(questionRepository.findTopBySessionIdOrderBySequenceDesc(10L))
+        .thenReturn(Optional.of(currentQuestion));
+
+    // when
+    List<InProgressSessionResponse> result =
+        interviewSessionService.getInProgressSessions(memberId);
+
+    // then
+    assertThat(result).hasSize(1);
+
+    InProgressSessionResponse response = result.get(0);
+    assertThat(response.sessionId()).isEqualTo(10L);
+    assertThat(response.category()).isEqualTo("OS");
+    assertThat(response.currentQuestion().questionId()).isEqualTo(3L);
+    assertThat(response.currentQuestion().sequence()).isEqualTo(3);
+  }
+
+  @Test
+  @DisplayName("진행 중 세션 조회 - 진행 중 세션이 없으면 빈 리스트를 반환한다")
+  void getInProgressSessions_emptyList() {
+    // given
+    Long memberId = 1L;
+    when(sessionRepository.findByMemberIdAndStatus(memberId, InterviewStatus.IN_PROGRESS))
+        .thenReturn(Collections.emptyList());
+
+    // when
+    List<InProgressSessionResponse> result =
+        interviewSessionService.getInProgressSessions(memberId);
+
+    // then
+    assertThat(result).isEmpty();
+  }
 
   // ============================================================
   // getSessionHistory() 테스트

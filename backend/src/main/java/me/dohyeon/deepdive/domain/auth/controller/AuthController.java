@@ -61,7 +61,7 @@ public class AuthController {
   })
   @PostMapping("/logout")
   public CommonResponse<Void> logout(
-      @AuthenticationPrincipal Long memberId,
+      @Parameter(hidden = true) @AuthenticationPrincipal Long memberId,
       HttpServletResponse response
   ) {
     authService.revokeRefreshToken(memberId);

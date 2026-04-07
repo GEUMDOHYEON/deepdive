@@ -16,6 +16,8 @@ public interface InterviewQuestionRepository extends JpaRepository<InterviewQues
 
   Optional<InterviewQuestion> findByIdAndSessionId(Long id, Long sessionId);
 
+  Optional<InterviewQuestion> findTopBySessionIdOrderBySequenceDesc(Long sessionId);
+
   int countBySessionId(Long sessionId);
 
   void deleteByMemberId(Long memberId);

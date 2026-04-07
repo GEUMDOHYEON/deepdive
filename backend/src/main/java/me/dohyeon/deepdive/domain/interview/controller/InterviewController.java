@@ -8,6 +8,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import me.dohyeon.deepdive.domain.interview.dto.AnswerSubmitRequest;
 import me.dohyeon.deepdive.domain.interview.dto.AnswerSubmitResponse;
+import me.dohyeon.deepdive.domain.interview.dto.InProgressSessionResponse;
 import me.dohyeon.deepdive.domain.interview.dto.SessionResultResponse;
 import me.dohyeon.deepdive.domain.interview.dto.SessionSummaryResponse;
 import me.dohyeon.deepdive.domain.interview.dto.StartSessionRequest;
@@ -39,7 +40,7 @@ public class InterviewController {
   @PostMapping("/sessions")
   @ResponseStatus(HttpStatus.CREATED)
   public CommonResponse<StartSessionResponse> startSession(
-      @AuthenticationPrincipal Long memberId,
+      @Parameter(hidden = true) @AuthenticationPrincipal Long memberId,
       @RequestBody StartSessionRequest request
   ) {
     return CommonResponse.ok(interviewSessionService.startSession(memberId, request));
@@ -59,7 +60,7 @@ public class InterviewController {
   })
   @PostMapping("/sessions/{sessionId}/questions/{questionId}/answers")
   public CommonResponse<AnswerSubmitResponse> submitAnswer(
-      @AuthenticationPrincipal Long memberId,
+      @Parameter(hidden = true) @AuthenticationPrincipal Long memberId,
       @PathVariable Long sessionId,
       @PathVariable Long questionId,
       @RequestBody AnswerSubmitRequest request
@@ -81,7 +82,7 @@ public class InterviewController {
   })
   @GetMapping("/sessions/{sessionId}/result")
   public CommonResponse<SessionResultResponse> getSessionResult(
-      @AuthenticationPrincipal Long memberId,
+      @Parameter(hidden = true) @AuthenticationPrincipal Long memberId,
       @PathVariable Long sessionId
   ) {
     return CommonResponse.ok(interviewSessionService.getSessionReport(memberId, sessionId));
@@ -93,8 +94,23 @@ public class InterviewController {
   )
   @GetMapping("/sessions/history")
   public CommonResponse<List<SessionSummaryResponse>> getSessionHistory(
-      @AuthenticationPrincipal Long memberId
+      @Parameter(hidden = true) @AuthenticationPrincipal Long memberId
   ) {
     return CommonResponse.ok(interviewSessionService.getSessionHistory(memberId));
+  }
+
+  @Operation(
+      summary = "진행 중 세션 조회",
+      description = "완료되지 않은 면접 세션과 현재 질문을 반환합니다. 로그인이 필요합니다."
+  )
+  @ApiResponses({
+      @ApiResponse(responseCode = "200", description = "조회 성공"),
+      @ApiResponse(responseCode = "401", description = "인증 필요")
+  })
+  @GetMapping("/sessions/in-progress")
+  public CommonResponse<List<InProgressSessionResponse>> getInProgressSessions(
+      @Parameter(hidden = true) @AuthenticationPrincipal Long memberId
+  ) {
+    return CommonResponse.ok(interviewSessionService.getInProgressSessions(memberId));
   }
 }

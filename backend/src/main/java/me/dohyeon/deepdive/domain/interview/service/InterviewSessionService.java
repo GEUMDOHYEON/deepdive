@@ -6,6 +6,8 @@ import me.dohyeon.deepdive.domain.interview.dto.AnswerSubmitResponse;
 import me.dohyeon.deepdive.domain.interview.dto.AnswerSubmitResponse.FeedbackResponse;
 import me.dohyeon.deepdive.domain.interview.dto.AnswerSubmitResponse.NextQuestionResponse;
 import me.dohyeon.deepdive.domain.interview.dto.AiEvaluationResponse;
+import me.dohyeon.deepdive.domain.interview.dto.InProgressSessionResponse;
+import me.dohyeon.deepdive.domain.interview.dto.InProgressSessionResponse.QuestionResponse;
 import me.dohyeon.deepdive.domain.interview.dto.QnaResultDto;
 import me.dohyeon.deepdive.domain.interview.dto.SessionResultResponse;
 import me.dohyeon.deepdive.domain.interview.dto.SessionSummaryResponse;
@@ -265,5 +267,24 @@ public class InterviewSessionService {
             s.getCreatedAt()
         ))
         .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public List<InProgressSessionResponse> getInProgressSessions(Long memberId) {
+    return sessionRepository.findByMemberIdAndStatus(memberId,InterviewStatus.IN_PROGRESS).stream().map(session -> {
+      InterviewQuestion currentQuestion =  questionRepository.findTopBySessionIdOrderBySequenceDesc(session.getId()).orElseThrow(() -> new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND));
+
+      InProgressSessionResponse.QuestionResponse questionResponse = new QuestionResponse(
+          currentQuestion.getId(),
+          currentQuestion.getContent(),
+          currentQuestion.getSequence()
+      );
+
+      return new InProgressSessionResponse(
+          session.getId(),
+          session.getCategory().name(),
+          questionResponse
+      );
+    }).toList();
   }
 }
