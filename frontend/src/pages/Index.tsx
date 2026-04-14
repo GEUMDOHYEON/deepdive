@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Cpu, Database, Network, Binary, Shield, Layers, Shuffle, RotateCcw, ArrowRight } from "lucide-react";
+import { Cpu, Database, Network, Binary, Shield, Layers, Shuffle, ArrowRight } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { interviewApi, CATEGORY_MAP } from "@/api/interview";
 
 const categories = [
   { id: "os", label: "운영체제", icon: Cpu, desc: "프로세스, 스레드, 메모리 관리" },
@@ -25,6 +28,34 @@ const item = {
 
 const Index = () => {
   const navigate = useNavigate();
+  const [loadingCategory, setLoadingCategory] = useState<string | null>(null);
+
+  const startSession = async (categoryId: string) => {
+    if (loadingCategory) return;
+    setLoadingCategory(categoryId);
+    try {
+      const res = await interviewApi.startSession(CATEGORY_MAP[categoryId]);
+      const { sessionId, firstQuestion } = res.data.data;
+      navigate("/interview", {
+        state: {
+          sessionId,
+          questionId: firstQuestion.questionId,
+          questionContent: firstQuestion.content,
+          sequence: firstQuestion.sequence,
+          isFollowUp: false,
+        },
+      });
+    } catch {
+      // 401은 인터셉터가 처리 (로그인 페이지로 이동)
+    } finally {
+      setLoadingCategory(null);
+    }
+  };
+
+  const startRandom = () => {
+    const randomCat = categories[Math.floor(Math.random() * categories.length)];
+    startSession(randomCat.id);
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -66,10 +97,15 @@ const Index = () => {
               <motion.button
                 key={cat.id}
                 variants={item}
-                onClick={() => navigate("/interview")}
-                className="group flex flex-col items-start gap-2 p-4 rounded-xl bg-background border border-border hover:border-primary/50 hover:bg-secondary transition-all duration-200 text-left"
+                onClick={() => startSession(cat.id)}
+                disabled={!!loadingCategory}
+                className="group flex flex-col items-start gap-2 p-4 rounded-xl bg-background border border-border hover:border-primary/50 hover:bg-secondary transition-all duration-200 text-left disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <cat.icon className="w-5 h-5 text-primary" />
+                {loadingCategory === cat.id ? (
+                  <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                ) : (
+                  <cat.icon className="w-5 h-5 text-primary" />
+                )}
                 <div>
                   <p className="font-display font-medium text-sm text-foreground">{cat.label}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{cat.desc}</p>
@@ -84,19 +120,17 @@ const Index = () => {
       <section className="py-10 pb-16">
         <div className="container flex flex-col sm:flex-row items-center justify-center gap-3">
           <button
-            onClick={() => navigate("/interview")}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
+            onClick={startRandom}
+            disabled={!!loadingCategory}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Shuffle className="w-4 h-4" />
+            {loadingCategory === "__random__" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Shuffle className="w-4 h-4" />
+            )}
             랜덤 면접 시작
             <ArrowRight className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => navigate("/interview")}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-secondary text-secondary-foreground font-medium text-sm hover:bg-surface-hover transition-colors border border-border"
-          >
-            <RotateCcw className="w-4 h-4" />
-            최근 오답 기반 시작
           </button>
         </div>
       </section>

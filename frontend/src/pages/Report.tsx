@@ -1,29 +1,86 @@
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { RotateCcw, Home, CheckCircle2, XCircle, MessageSquare } from "lucide-react";
+import { RotateCcw, Home, CheckCircle2, XCircle, MessageSquare, Loader2 } from "lucide-react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { interviewApi, SessionResultResponse } from "@/api/interview";
 
-const radarData = [
-  { subject: "기술 정확성", score: 78, fullMark: 100 },
-  { subject: "논리 구조", score: 85, fullMark: 100 },
-  { subject: "핵심 키워드", score: 60, fullMark: 100 },
-  { subject: "깊이", score: 72, fullMark: 100 },
-  { subject: "표현력", score: 88, fullMark: 100 },
-];
+interface LocationState {
+  sessionId: number;
+}
 
-const timeline = [
-  { type: "question" as const, content: "프로세스와 스레드의 차이점에 대해 설명해주세요." },
-  { type: "answer" as const, content: "프로세스는 독립적인 메모리 공간을 가지는 실행 단위이고, 스레드는 프로세스 내에서 메모리를 공유하며 실행되는 단위입니다.", score: 78 },
-  { type: "followup" as const, content: "컨텍스트 스위칭에서 발생하는 오버헤드에 대해 더 자세히 설명해주실 수 있나요?" },
-  { type: "answer" as const, content: "컨텍스트 스위칭 시 PCB에 현재 상태를 저장하고, 새로운 프로세스의 PCB를 로드하는 과정에서 캐시 무효화와 TLB 플러시가 발생합니다.", score: 85 },
-];
-
-const missingKeywords = ["PCB", "레지스터 저장", "커널 모드 전환", "캐시 미스", "TLB", "IPC 비용"];
+const CATEGORY_KO: Record<string, string> = {
+  OS: "운영체제",
+  DATABASE: "데이터베이스",
+  NETWORK: "네트워크",
+  DATA_STRUCTURE: "자료구조",
+  SECURITY: "보안",
+  SOFTWARE_DESIGN: "소프트웨어 설계",
+};
 
 const Report = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const state = location.state as LocationState | null;
+
+  const [result, setResult] = useState<SessionResultResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!state?.sessionId) {
+      navigate("/");
+      return;
+    }
+    interviewApi
+      .getSessionResult(state.sessionId)
+      .then((res) => setResult(res.data.data))
+      .catch(() => setError("리포트를 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }, [state, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !result) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-3">
+        <p className="text-sm text-muted-foreground">{error || "결과를 불러올 수 없습니다."}</p>
+        <button
+          onClick={() => navigate("/")}
+          className="text-sm text-primary hover:underline"
+        >
+          홈으로 돌아가기
+        </button>
+      </div>
+    );
+  }
+
+  // 레이더 차트 데이터 — QnA 평균으로 계산
+  const avgAccuracy = Math.round(
+    result.qnaList.reduce((s, q) => s + q.scoreAccuracy, 0) / result.qnaList.length
+  );
+  const avgLogic = Math.round(
+    result.qnaList.reduce((s, q) => s + q.scoreLogic, 0) / result.qnaList.length
+  );
+
+  const radarData = [
+    { subject: "기술 정확성", score: avgAccuracy, fullMark: 100 },
+    { subject: "논리 구조", score: avgLogic, fullMark: 100 },
+    { subject: "종합 점수", score: result.totalScore ?? 0, fullMark: 100 },
+  ];
+
+  // 모든 누락 키워드 수집 (중복 제거)
+  const allMissingKeywords = [
+    ...new Set(result.qnaList.flatMap((q) => q.missingKeywords ?? [])),
+  ];
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -34,14 +91,16 @@ const Report = () => {
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
             <div className="text-center mb-10">
               <h1 className="text-2xl font-display font-bold text-foreground">정밀 분석 리포트</h1>
-              <p className="text-sm text-muted-foreground mt-1">세션 결과를 확인하세요</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {CATEGORY_KO[result.category] ?? result.category} 세션 결과
+              </p>
             </div>
 
             {/* Score Dashboard */}
             <div className="grid md:grid-cols-2 gap-4 mb-10">
               <div className="p-5 rounded-xl bg-background border border-border">
                 <h3 className="font-display font-medium text-sm mb-3 text-foreground">종합 역량 분석</h3>
-                <ResponsiveContainer width="100%" height={250}>
+                <ResponsiveContainer width="100%" height={220}>
                   <RadarChart data={radarData}>
                     <PolarGrid stroke="hsl(0 0% 90%)" />
                     <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(0 0% 55%)", fontSize: 11 }} />
@@ -70,53 +129,57 @@ const Report = () => {
                       </div>
                     </div>
                   ))}
+                  <div className="pt-3 border-t border-border mt-auto">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-display font-semibold text-foreground">총점</span>
+                      <span className="font-display font-bold text-primary">{result.totalScore}점</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Timeline */}
+            {/* QnA Timeline */}
             <div className="mb-10">
               <h3 className="font-display font-medium text-base mb-4 text-foreground">세션 타임라인</h3>
               <div className="space-y-3">
-                {timeline.map((item, i) => (
+                {result.qnaList.map((qna, i) => (
                   <motion.div
-                    key={i}
+                    key={qna.questionId}
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.08 }}
-                    className={`flex gap-3 p-3 rounded-xl border ${
-                      item.type === "answer"
-                        ? "bg-background border-border"
-                        : item.type === "followup"
-                        ? "bg-primary/5 border-primary/15"
-                        : "bg-secondary border-border"
-                    }`}
+                    transition={{ delay: i * 0.06 }}
+                    className="rounded-xl border border-border overflow-hidden"
                   >
-                    <div className="pt-0.5">
-                      {item.type === "question" ? (
-                        <MessageSquare className="w-4 h-4 text-primary" />
-                      ) : item.type === "followup" ? (
-                        <MessageSquare className="w-4 h-4 text-primary" />
-                      ) : (item.score ?? 0) >= 80 ? (
-                        <CheckCircle2 className="w-4 h-4 text-success" />
-                      ) : (
-                        <XCircle className="w-4 h-4 text-warning" />
-                      )}
+                    {/* 질문 */}
+                    <div className="flex gap-3 p-3 bg-secondary">
+                      <MessageSquare className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                      <p className="text-sm text-foreground">{qna.questionContent}</p>
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {item.type === "question" ? "질문" : item.type === "followup" ? "꼬리 질문" : "내 답변"}
-                        </span>
-                        {item.type === "answer" && (
-                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
-                            (item.score ?? 0) >= 80 ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
-                          }`}>
-                            {item.score}점
-                          </span>
+                    {/* 답변 */}
+                    <div className="flex gap-3 p-3 bg-background">
+                      <div className="pt-0.5">
+                        {(qna.scoreAccuracy + qna.scoreLogic) / 2 >= 70 ? (
+                          <CheckCircle2 className="w-4 h-4 text-success" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-warning" />
                         )}
                       </div>
-                      <p className="text-sm text-foreground leading-relaxed">{item.content}</p>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-xs font-medium text-muted-foreground">내 답변</span>
+                          <span
+                            className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
+                              (qna.scoreAccuracy + qna.scoreLogic) / 2 >= 70
+                                ? "bg-success/10 text-success"
+                                : "bg-warning/10 text-warning"
+                            }`}
+                          >
+                            정확성 {qna.scoreAccuracy} / 논리 {qna.scoreLogic}
+                          </span>
+                        </div>
+                        <p className="text-sm text-foreground leading-relaxed">{qna.userAnswer}</p>
+                      </div>
                     </div>
                   </motion.div>
                 ))}
@@ -124,25 +187,30 @@ const Report = () => {
             </div>
 
             {/* Missing Keywords */}
-            <div className="mb-10 p-5 rounded-xl bg-background border border-border">
-              <h3 className="font-display font-medium text-sm mb-3 text-foreground">놓친 핵심 키워드</h3>
-              <div className="flex flex-wrap gap-2">
-                {missingKeywords.map((kw) => (
-                  <span key={kw} className="px-2.5 py-1 rounded-lg bg-destructive/8 text-destructive text-xs font-medium border border-destructive/15">
-                    {kw}
-                  </span>
-                ))}
+            {allMissingKeywords.length > 0 && (
+              <div className="mb-10 p-5 rounded-xl bg-background border border-border">
+                <h3 className="font-display font-medium text-sm mb-3 text-foreground">놓친 핵심 키워드</h3>
+                <div className="flex flex-wrap gap-2">
+                  {allMissingKeywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="px-2.5 py-1 rounded-lg bg-destructive/8 text-destructive text-xs font-medium border border-destructive/15"
+                    >
+                      {kw}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3">
               <button
-                onClick={() => navigate("/interview")}
+                onClick={() => navigate("/")}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
               >
                 <RotateCcw className="w-4 h-4" />
-                오답 질문 다시 시도
+                새 면접 시작
               </button>
               <button
                 onClick={() => navigate("/")}

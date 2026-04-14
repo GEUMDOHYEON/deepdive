@@ -196,6 +196,7 @@ public class InterviewSessionService {
               feedback != null ? feedback.getScoreAccuracy() : 0,
               feedback != null ? feedback.getScoreLogic() : 0,
               feedback != null ? feedback.getFeedbackComment() : null,
+              feedback != null ? feedback.getMissingKeywords() : List.of(),
               feedback != null ? feedback.getIdealAnswer() : null
           );
         })

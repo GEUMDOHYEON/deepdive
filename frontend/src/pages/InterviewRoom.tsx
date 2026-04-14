@@ -1,30 +1,47 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, Send, Hash, Loader2 } from "lucide-react";
 import Header from "@/components/Header";
+import { interviewApi } from "@/api/interview";
 
-const sampleQuestions = [
-  "프로세스와 스레드의 차이점에 대해 설명해주세요.",
-  "컨텍스트 스위칭이 발생하는 과정을 단계별로 설명해주세요.",
-  "교착 상태(Deadlock)의 4가지 필요 조건을 설명해주세요.",
-  "가상 메모리란 무엇이며, 페이지 폴트 처리 과정을 설명해주세요.",
-  "뮤텍스와 세마포어의 차이점을 설명해주세요.",
-];
+interface LocationState {
+  sessionId: number;
+  questionId: number;
+  questionContent: string;
+  sequence: number;
+  isFollowUp: boolean;
+}
+
+const TOTAL_Q = 5;
 
 const InterviewRoom = () => {
   const navigate = useNavigate();
-  const [currentQ, setCurrentQ] = useState(0);
+  const location = useLocation();
+  const state = location.state as LocationState | null;
+
   const [answer, setAnswer] = useState("");
   const [timeLeft, setTimeLeft] = useState(180);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const totalQ = 5;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const startTimeRef = useRef(Date.now());
+
+  // 세션 정보 없이 접근 시 홈으로
+  useEffect(() => {
+    if (!state?.sessionId) {
+      navigate("/");
+    }
+  }, [state, navigate]);
 
   useEffect(() => {
-    if (timeLeft <= 0 || isAnalyzing) return;
+    startTimeRef.current = Date.now();
+    setTimeLeft(180);
+  }, [state?.questionId]);
+
+  useEffect(() => {
+    if (timeLeft <= 0 || isSubmitting) return;
     const t = setInterval(() => setTimeLeft((p) => p - 1), 1000);
     return () => clearInterval(t);
-  }, [timeLeft, isAnalyzing]);
+  }, [timeLeft, isSubmitting]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -32,15 +49,41 @@ const InterviewRoom = () => {
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
-  const handleSubmit = () => {
-    if (!answer.trim()) return;
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      navigate("/feedback", { state: { answer, question: sampleQuestions[currentQ], questionNum: currentQ + 1 } });
-    }, 2000);
+  const handleSubmit = async () => {
+    if (!answer.trim() || !state) return;
+    setIsSubmitting(true);
+
+    const processingTime = Math.floor((Date.now() - startTimeRef.current) / 1000);
+
+    try {
+      const res = await interviewApi.submitAnswer(
+        state.sessionId,
+        state.questionId,
+        answer.trim(),
+        processingTime
+      );
+      const data = res.data.data;
+
+      if (data.sessionCompleted) {
+        navigate("/report", { state: { sessionId: state.sessionId } });
+      } else {
+        navigate("/feedback", {
+          state: {
+            sessionId: state.sessionId,
+            question: state.questionContent,
+            answer: answer.trim(),
+            feedback: data.feedback,
+            nextQuestion: data.nextQuestion,
+            sequence: state.sequence,
+          },
+        });
+      }
+    } catch {
+      setIsSubmitting(false);
+    }
   };
 
-  const isFollowUp = currentQ > 0 && currentQ % 2 === 1;
+  if (!state?.sessionId) return null;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -51,25 +94,29 @@ const InterviewRoom = () => {
         <div className="container flex items-center justify-between h-11 text-sm">
           <div className="flex items-center gap-2 font-display font-medium">
             <Hash className="w-4 h-4 text-primary" />
-            <span className="text-primary">Q{currentQ + 1}</span>
-            <span className="text-muted-foreground">/ {totalQ}</span>
+            <span className="text-primary">Q{state.sequence}</span>
+            <span className="text-muted-foreground">/ {TOTAL_Q}</span>
           </div>
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-1.5">
-              {Array.from({ length: totalQ }).map((_, i) => (
+              {Array.from({ length: TOTAL_Q }).map((_, i) => (
                 <div
                   key={i}
                   className={`w-7 h-1.5 rounded-full transition-colors ${
-                    i < currentQ
+                    i < state.sequence - 1
                       ? "bg-success"
-                      : i === currentQ
+                      : i === state.sequence - 1
                       ? "bg-primary"
                       : "bg-border"
                   }`}
                 />
               ))}
             </div>
-            <div className={`flex items-center gap-1.5 font-mono text-sm font-medium ${timeLeft < 30 ? "text-destructive" : "text-foreground"}`}>
+            <div
+              className={`flex items-center gap-1.5 font-mono text-sm font-medium ${
+                timeLeft < 30 ? "text-destructive" : "text-foreground"
+              }`}
+            >
               <Clock className="w-4 h-4" />
               {formatTime(timeLeft)}
             </div>
@@ -81,7 +128,7 @@ const InterviewRoom = () => {
       <main className="flex-1 pt-32 pb-12">
         <div className="container max-w-2xl">
           <AnimatePresence mode="wait">
-            {!isAnalyzing ? (
+            {!isSubmitting ? (
               <motion.div
                 key="question"
                 initial={{ opacity: 0, y: 12 }}
@@ -90,13 +137,13 @@ const InterviewRoom = () => {
                 transition={{ duration: 0.3 }}
               >
                 <div className="mb-6">
-                  {isFollowUp && (
+                  {state.isFollowUp && (
                     <span className="inline-block px-2 py-0.5 rounded-md bg-primary/10 text-primary text-xs font-medium mb-2">
                       Follow-up
                     </span>
                   )}
                   <h2 className="text-lg md:text-xl font-display font-semibold leading-relaxed text-foreground">
-                    {sampleQuestions[currentQ]}
+                    {state.questionContent}
                   </h2>
                 </div>
 
@@ -108,9 +155,7 @@ const InterviewRoom = () => {
                     className="w-full min-h-[200px] p-4 rounded-xl bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none text-foreground placeholder:text-muted-foreground transition-all text-sm"
                   />
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs text-muted-foreground">
-                      {answer.length}자
-                    </span>
+                    <span className="text-xs text-muted-foreground">{answer.length}자</span>
                     <button
                       onClick={handleSubmit}
                       disabled={!answer.trim()}

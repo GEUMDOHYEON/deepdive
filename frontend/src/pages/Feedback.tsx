@@ -2,19 +2,31 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { MessageSquare, ArrowRight, FileText } from "lucide-react";
 import Header from "@/components/Header";
+import { AnswerSubmitResponse } from "@/api/interview";
+
+interface LocationState {
+  sessionId: number;
+  question: string;
+  answer: string;
+  feedback: AnswerSubmitResponse["feedback"];
+  nextQuestion: AnswerSubmitResponse["nextQuestion"];
+  sequence: number;
+}
 
 const Feedback = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const state = location.state as LocationState | null;
 
-  const question = (location.state as any)?.question || "프로세스와 스레드의 차이점에 대해 설명해주세요.";
-  const answer =
-    (location.state as any)?.answer ||
-    "프로세스는 독립적인 메모리 공간을 가지는 실행 단위이고, 스레드는 프로세스 내에서 메모리를 공유하며 실행되는 단위입니다. 컨텍스트 스위칭 비용이 스레드가 더 적습니다.";
+  if (!state) {
+    navigate("/");
+    return null;
+  }
 
-  const keywords = ["프로세스", "스레드", "메모리", "컨텍스트 스위칭"];
+  const { sessionId, question, answer, feedback, nextQuestion, sequence } = state;
 
-  const highlightAnswer = (text: string) => {
+  const highlightKeywords = (text: string, keywords: string[]) => {
+    if (!keywords?.length) return text;
     let result = text;
     keywords.forEach((kw) => {
       result = result.split(kw).join(
@@ -22,6 +34,23 @@ const Feedback = () => {
       );
     });
     return result;
+  };
+
+  const goToNextQuestion = () => {
+    if (!nextQuestion) return;
+    navigate("/interview", {
+      state: {
+        sessionId,
+        questionId: nextQuestion.questionId,
+        questionContent: nextQuestion.content,
+        sequence: nextQuestion.sequence,
+        isFollowUp: nextQuestion.followUp,
+      },
+    });
+  };
+
+  const endSession = () => {
+    navigate("/report", { state: { sessionId } });
   };
 
   return (
@@ -35,56 +64,98 @@ const Feedback = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
           >
-            {/* Original Answer */}
+            {/* 질문 */}
+            <div className="mb-4 p-4 rounded-xl bg-secondary border border-border">
+              <p className="text-xs text-muted-foreground mb-1.5 font-medium">Q{sequence}. 질문</p>
+              <p className="text-sm text-foreground leading-relaxed">{question}</p>
+            </div>
+
+            {/* 내 답변 (키워드 하이라이트) */}
             <div className="mb-6 p-4 rounded-xl bg-secondary border border-border">
               <p className="text-xs text-muted-foreground mb-2 font-medium">내 답변</p>
               <p
                 className="text-sm text-foreground leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: highlightAnswer(answer) }}
+                dangerouslySetInnerHTML={{
+                  __html: highlightKeywords(
+                    answer,
+                    feedback.missingKeywords ?? []
+                  ),
+                }}
               />
             </div>
 
-            {/* AI Feedback */}
+            {/* AI 피드백 */}
             <div className="mb-6 p-4 rounded-xl border border-border bg-background">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-3">
                 <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
                   <MessageSquare className="w-3.5 h-3.5 text-primary" />
                 </div>
                 <span className="font-display font-medium text-sm text-primary">AI 면접관 피드백</span>
+                <div className="ml-auto flex gap-2">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
+                    정확성 {feedback.scoreAccuracy}점
+                  </span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
+                    논리 {feedback.scoreLogic}점
+                  </span>
+                </div>
               </div>
-              <p className="text-sm text-foreground leading-relaxed">
-                좋은 답변입니다! 프로세스와 스레드의 핵심 차이를 잘 설명하셨습니다. 
-                다만, <strong className="text-primary font-medium">컨텍스트 스위칭</strong>에 대해 좀 더 깊이 들어가 보겠습니다.
+              <p className="text-sm text-foreground leading-relaxed mb-3">
+                {feedback.feedbackComment}
               </p>
+
+              {feedback.missingKeywords?.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-1.5">놓친 키워드</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {feedback.missingKeywords.map((kw) => (
+                      <span
+                        key={kw}
+                        className="px-2 py-0.5 rounded-md bg-destructive/8 text-destructive text-xs font-medium border border-destructive/15"
+                      >
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-border">
+                <p className="text-xs font-medium text-muted-foreground mb-1">모범 답안</p>
+                <p className="text-sm text-foreground leading-relaxed">{feedback.idealAnswer}</p>
+              </div>
             </div>
 
-            {/* Follow-up Question */}
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.4 }}
-              className="p-5 rounded-xl bg-secondary border border-border mb-6"
-            >
-              <span className="inline-block px-2 py-0.5 rounded-md bg-primary/10 text-primary text-xs font-medium mb-2">
-                꼬리 질문
-              </span>
-              <p className="text-base font-display font-medium leading-relaxed text-foreground">
-                "방금 말씀하신 '<span className="text-primary">컨텍스트 스위칭</span>'에서 발생하는 
-                오버헤드에 대해 더 자세히 설명해주실 수 있나요?"
-              </p>
-            </motion.div>
+            {/* 꼬리 질문 */}
+            {nextQuestion && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.4 }}
+                className="p-5 rounded-xl bg-secondary border border-border mb-6"
+              >
+                <span className="inline-block px-2 py-0.5 rounded-md bg-primary/10 text-primary text-xs font-medium mb-2">
+                  {nextQuestion.followUp ? "꼬리 질문" : `Q${nextQuestion.sequence}`}
+                </span>
+                <p className="text-base font-display font-medium leading-relaxed text-foreground">
+                  "{nextQuestion.content}"
+                </p>
+              </motion.div>
+            )}
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3">
+              {nextQuestion && (
+                <button
+                  onClick={goToNextQuestion}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                  {nextQuestion.followUp ? "꼬리 질문에 답변하기" : "다음 질문 답변하기"}
+                </button>
+              )}
               <button
-                onClick={() => navigate("/interview")}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
-              >
-                <ArrowRight className="w-4 h-4" />
-                꼬리 질문에 답변하기
-              </button>
-              <button
-                onClick={() => navigate("/report")}
+                onClick={endSession}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-secondary text-secondary-foreground font-medium text-sm hover:bg-surface-hover transition-colors border border-border"
               >
                 <FileText className="w-4 h-4" />

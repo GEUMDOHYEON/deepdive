@@ -1,0 +1,25 @@
+# 빌드 및 캐시
+.gradle/
+build/
+bin/
+out/
+
+# IDE 설정
+.idea/
+.vscode/
+*.iml
+
+# 보안 및 환경 설정 (절대 AI가 마음대로 수정하거나 노출하면 안 됨)
+.env
+.env.local
+*.keystore
+
+# 로그 및 임시 파일
+logs/
+*.log
+tmp/
+
+# 문서 및 기타 (AI가 굳이 분석할 필요 없는 정적 자원)
+.git/
+node_modules/
+dist/
