@@ -1,7 +1,5 @@
 package me.dohyeon.deepdive.domain.interview.dto;
 
-import me.dohyeon.deepdive.domain.interview.dto.StartSessionResponse.QuestionResponse;
-
 public record InProgressSessionResponse(
     Long sessionId,
     String category,
@@ -10,6 +8,7 @@ public record InProgressSessionResponse(
   public record QuestionResponse(
       Long questionId,
       String content,
-      int sequence
+      int sequence,
+      boolean followUp
   ) {}
 }

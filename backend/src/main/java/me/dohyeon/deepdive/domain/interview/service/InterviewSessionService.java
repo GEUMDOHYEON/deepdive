@@ -278,7 +278,8 @@ public class InterviewSessionService {
       InProgressSessionResponse.QuestionResponse questionResponse = new QuestionResponse(
           currentQuestion.getId(),
           currentQuestion.getContent(),
-          currentQuestion.getSequence()
+          currentQuestion.getSequence(),
+          currentQuestion.isFollowUp()
       );
 
       return new InProgressSessionResponse(

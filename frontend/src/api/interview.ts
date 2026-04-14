@@ -59,7 +59,24 @@ export interface SessionResultResponse {
   qnaList: QnaResult[];
 }
 
+export interface InProgressSession {
+  sessionId: number;
+  category: string;
+  currentQuestion: {
+    questionId: number;
+    content: string;
+    sequence: number;
+    followUp: boolean;
+  };
+}
+
 export const interviewApi = {
+  getInProgressSessions: () =>
+    api.get<{ success: boolean; data: InProgressSession[] }>(
+      "/api/v1/interviews/sessions/in-progress"
+    ),
+
+
   startSession: (category: string) =>
     api.post<{ success: boolean; data: StartSessionResponse }>("/api/v1/interviews/sessions", {
       category,
