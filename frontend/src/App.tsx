@@ -15,7 +15,8 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, isInitializing } = useAuth();
+  if (isInitializing) return null;
   return isLoggedIn ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
