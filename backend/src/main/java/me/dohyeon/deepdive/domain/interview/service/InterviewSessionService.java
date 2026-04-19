@@ -160,16 +160,11 @@ public class InterviewSessionService {
    * @param sessionId 조회할 세션 ID
    * @return {@link SessionResultResponse}
    */
-  @Transactional(readOnly = true)
+  @Transactional
   public SessionResultResponse getSessionReport(Long memberId, Long sessionId) {
     // 1. 세션 조회 (소유권 체크 포함)
     InterviewSession session = sessionRepository.findByIdAndMemberId(sessionId, memberId)
         .orElseThrow(() -> new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND));
-
-    // 2. 완료된 세션인지 검증
-    if (session.getStatus() != InterviewStatus.COMPLETED) {
-      throw new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_COMPLETED);
-    }
 
     // 3. N+1 방지: 질문·답변·피드백을 session 단위로 각 1회씩 일괄 조회
     List<InterviewQuestion> questions = questionRepository.findAllBySessionIdForReport(sessionId);
@@ -202,9 +197,9 @@ public class InterviewSessionService {
         })
         .toList();
 
-    // 5. totalScore가 0이면 피드백 목록으로 평균 계산 후 업데이트
+    // 5. 미완료 세션이거나 totalScore가 없으면 현재까지 피드백으로 점수 계산 후 완료 처리
     Integer totalScore = session.getTotalScore();
-    if (totalScore == null || totalScore == 0) {
+    if (session.getStatus() != InterviewStatus.COMPLETED || totalScore == null || totalScore == 0) {
       totalScore = calculateAverageScore(feedbackRepository.findBySessionId(sessionId));
       session.complete(totalScore);
     }
