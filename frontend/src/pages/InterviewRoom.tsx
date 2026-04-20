@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Send, Hash, Loader2 } from "lucide-react";
+import { Clock, Send, Hash, Loader2, AlarmClock } from "lucide-react";
 import Header from "@/components/Header";
 import { interviewApi } from "@/api/interview";
 
@@ -23,64 +23,76 @@ const InterviewRoom = () => {
   const [answer, setAnswer] = useState("");
   const [timeLeft, setTimeLeft] = useState(180);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTimedOut, setIsTimedOut] = useState(false);
   const startTimeRef = useRef(Date.now());
 
-  // 세션 정보 없이 접근 시 홈으로
   useEffect(() => {
-    if (!state?.sessionId) {
-      navigate("/");
-    }
+    if (!state?.sessionId) navigate("/");
   }, [state, navigate]);
 
   useEffect(() => {
     startTimeRef.current = Date.now();
     setTimeLeft(180);
+    setIsTimedOut(false);
   }, [state?.questionId]);
 
+  const submit = useCallback(
+    async (content: string, timedOut = false) => {
+      if (isSubmitting || !state) return;
+      setIsSubmitting(true);
+      if (timedOut) setIsTimedOut(true);
+
+      const processingTime = Math.floor((Date.now() - startTimeRef.current) / 1000);
+
+      try {
+        const res = await interviewApi.submitAnswer(
+          state.sessionId,
+          state.questionId,
+          content,
+          processingTime
+        );
+        const data = res.data.data;
+
+        if (data.sessionCompleted) {
+          navigate("/report", { state: { sessionId: state.sessionId } });
+        } else {
+          navigate("/feedback", {
+            state: {
+              sessionId: state.sessionId,
+              question: state.questionContent,
+              answer: content,
+              feedback: data.feedback,
+              nextQuestion: data.nextQuestion,
+              sequence: state.sequence,
+            },
+          });
+        }
+      } catch {
+        setIsSubmitting(false);
+        setIsTimedOut(false);
+      }
+    },
+    [isSubmitting, state, navigate]
+  );
+
+  // 타이머 카운트다운
   useEffect(() => {
     if (timeLeft <= 0 || isSubmitting) return;
     const t = setInterval(() => setTimeLeft((p) => p - 1), 1000);
     return () => clearInterval(t);
   }, [timeLeft, isSubmitting]);
 
+  // 타이머 만료 시 자동 제출
+  useEffect(() => {
+    if (timeLeft === 0 && !isSubmitting) {
+      submit(answer, true);
+    }
+  }, [timeLeft]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m}:${sec.toString().padStart(2, "0")}`;
-  };
-
-  const handleSubmit = async () => {
-    if (!answer.trim() || !state) return;
-    setIsSubmitting(true);
-
-    const processingTime = Math.floor((Date.now() - startTimeRef.current) / 1000);
-
-    try {
-      const res = await interviewApi.submitAnswer(
-        state.sessionId,
-        state.questionId,
-        answer.trim(),
-        processingTime
-      );
-      const data = res.data.data;
-
-      if (data.sessionCompleted) {
-        navigate("/report", { state: { sessionId: state.sessionId } });
-      } else {
-        navigate("/feedback", {
-          state: {
-            sessionId: state.sessionId,
-            question: state.questionContent,
-            answer: answer.trim(),
-            feedback: data.feedback,
-            nextQuestion: data.nextQuestion,
-            sequence: state.sequence,
-          },
-        });
-      }
-    } catch {
-      setIsSubmitting(false);
-    }
   };
 
   if (!state?.sessionId) return null;
@@ -114,7 +126,7 @@ const InterviewRoom = () => {
             </div>
             <div
               className={`flex items-center gap-1.5 font-mono text-sm font-medium ${
-                timeLeft < 30 ? "text-destructive" : "text-foreground"
+                timeLeft <= 30 && timeLeft > 0 ? "text-destructive animate-pulse" : timeLeft === 0 ? "text-destructive" : "text-foreground"
               }`}
             >
               <Clock className="w-4 h-4" />
@@ -157,7 +169,7 @@ const InterviewRoom = () => {
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-xs text-muted-foreground">{answer.length}자</span>
                     <button
-                      onClick={handleSubmit}
+                      onClick={() => submit(answer.trim())}
                       disabled={!answer.trim()}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
                     >
@@ -176,6 +188,12 @@ const InterviewRoom = () => {
               >
                 <Loader2 className="w-8 h-8 text-primary animate-spin" />
                 <div className="text-center">
+                  {isTimedOut && (
+                    <div className="flex items-center justify-center gap-1.5 mb-2 text-destructive">
+                      <AlarmClock className="w-4 h-4" />
+                      <span className="text-xs font-medium">시간 초과 — 자동 제출되었습니다</span>
+                    </div>
+                  )}
                   <p className="font-display font-medium text-base mb-1 text-foreground">
                     AI 면접관이 답변을 분석 중입니다...
                   </p>
