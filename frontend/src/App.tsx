@@ -10,6 +10,7 @@ import Feedback from "./pages/Feedback";
 import Report from "./pages/Report";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/interview" element={<PrivateRoute><InterviewRoom /></PrivateRoute>} />
             <Route path="/feedback" element={<PrivateRoute><Feedback /></PrivateRoute>} />
             <Route path="/report" element={<PrivateRoute><Report /></PrivateRoute>} />
+            <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

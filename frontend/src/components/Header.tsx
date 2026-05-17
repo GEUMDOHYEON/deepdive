@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Waves, LogOut, User } from "lucide-react";
+
 import { useAuth } from "@/contexts/AuthContext";
 
 const Header = () => {
@@ -29,10 +30,13 @@ const Header = () => {
         <div className="flex items-center gap-3">
           {isLoggedIn ? (
             <>
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-secondary">
+              <Link
+                to="/profile"
+                className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-secondary hover:bg-surface-hover transition-colors"
+              >
                 <User className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-xs text-secondary-foreground">{user?.nickname}</span>
-              </div>
+              </Link>
               <button
                 onClick={handleLogout}
                 disabled={loggingOut}
