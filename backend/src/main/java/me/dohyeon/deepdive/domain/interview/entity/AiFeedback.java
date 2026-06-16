@@ -5,7 +5,8 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import me.dohyeon.deepdive.domain.interview.dto.AiEvaluationResponse;
+import me.dohyeon.deepdive.domain.interview.dto.AiFeedbackTextResult;
+import me.dohyeon.deepdive.domain.interview.dto.AiScoreResult;
 import me.dohyeon.deepdive.global.common.converter.StringListConverter;
 import me.dohyeon.deepdive.global.common.entity.BaseEntity;
 
@@ -65,17 +66,17 @@ public class AiFeedback extends BaseEntity {
     }
 
     public static AiFeedback create(Long answerId, Long questionId, Long sessionId,
-                                    Long memberId, AiEvaluationResponse evaluation) {
+                                    Long memberId, AiScoreResult scores, AiFeedbackTextResult feedbackText) {
         return AiFeedback.builder()
                 .answerId(answerId)
                 .questionId(questionId)
                 .sessionId(sessionId)
                 .memberId(memberId)
-                .scoreAccuracy(evaluation.scoreAccuracy())
-                .scoreLogic(evaluation.scoreLogic())
-                .feedbackComment(evaluation.feedbackComment())
-                .missingKeywords(evaluation.missingKeywords())
-                .idealAnswer(evaluation.idealAnswer())
+                .scoreAccuracy(scores.scoreAccuracy())
+                .scoreLogic(scores.scoreLogic())
+                .feedbackComment(feedbackText.feedbackComment())
+                .missingKeywords(scores.missingKeywords())
+                .idealAnswer(feedbackText.idealAnswer())
                 .build();
     }
 }

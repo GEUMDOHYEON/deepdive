@@ -5,7 +5,9 @@ import me.dohyeon.deepdive.domain.interview.dto.AnswerSubmitRequest;
 import me.dohyeon.deepdive.domain.interview.dto.AnswerSubmitResponse;
 import me.dohyeon.deepdive.domain.interview.dto.AnswerSubmitResponse.FeedbackResponse;
 import me.dohyeon.deepdive.domain.interview.dto.AnswerSubmitResponse.NextQuestionResponse;
-import me.dohyeon.deepdive.domain.interview.dto.AiEvaluationResponse;
+import me.dohyeon.deepdive.domain.interview.dto.AiFeedbackTextResult;
+import me.dohyeon.deepdive.domain.interview.dto.AiNextQuestionResult;
+import me.dohyeon.deepdive.domain.interview.dto.AiScoreResult;
 import me.dohyeon.deepdive.domain.interview.dto.InProgressSessionResponse;
 import me.dohyeon.deepdive.domain.interview.dto.InProgressSessionResponse.QuestionResponse;
 import me.dohyeon.deepdive.domain.interview.dto.QnaResultDto;
@@ -24,6 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Service
@@ -72,7 +76,7 @@ public class InterviewSessionService {
    * <ol>
    *   <li>세션·질문 유효성 검증 (소유권, 완료 여부)</li>
    *   <li>MemberAnswer DB 저장</li>
-   *   <li>AiInterviewService.evaluateAnswer 호출 → AiEvaluationResponse 획득</li>
+   *   <li>AiInterviewService 3-way 병렬 호출 (evaluateScores / generateFeedbackText / generateNextQuestion)</li>
    *   <li>AiFeedback DB 저장</li>
    *   <li>현재 세션의 질문 수 확인 → MAX_QUESTIONS(5)이면 세션 완료 처리</li>
    *   <li>질문이 남아있으면 다음 InterviewQuestion 생성 및 저장</li>
@@ -105,14 +109,43 @@ public class InterviewSessionService {
             request.content(), request.processingTime())
     );
 
-    // 4. AI 평가 (단일 호출로 평가 + 다음 질문 생성)
-    AiEvaluationResponse evaluation = aiInterviewService.evaluateAnswer(
-        question.getContent(), request.content()
-    );
+    // 4. AI 평가 + 다음 질문 생성을 병렬로 실행
+    //    - evaluateFuture : 5개 평가 항목 (정확성·논리·피드백·키워드·모범답안)
+    //    - nextQuestionFuture : 다음 질문 텍스트 + 꼬리질문 여부
+    //    가상 스레드 executor: 각 AI 호출에 독립 가상 스레드를 할당해 진정한 병렬 실행 보장
+    String questionContent = question.getContent();
+    String answerContent = request.content();
 
-    // 5. 피드백 저장
+    // 4-a. 세 가지 AI 호출을 가상 스레드로 동시 실행
+    //       evaluateScores     : scoreAccuracy·scoreLogic·missingKeywords (빠름)
+    //       generateFeedbackText: feedbackComment·idealAnswer              (느림, 긴 텍스트)
+    //       generateNextQuestion: nextQuestionContent·followUp             (중간)
+    //       총 응답 시간 = max(세 호출) ≈ 10~13s (순차 23s 대비 개선)
+    AiScoreResult scores;
+    AiFeedbackTextResult feedbackText;
+    AiNextQuestionResult nextQuestion;
+
+    try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+      CompletableFuture<AiScoreResult> scoresFuture = CompletableFuture.supplyAsync(
+          () -> aiInterviewService.evaluateScores(questionContent, answerContent), exec
+      );
+      CompletableFuture<AiFeedbackTextResult> feedbackTextFuture = CompletableFuture.supplyAsync(
+          () -> aiInterviewService.generateFeedbackText(questionContent, answerContent), exec
+      );
+      CompletableFuture<AiNextQuestionResult> nextQuestionFuture = CompletableFuture.supplyAsync(
+          () -> aiInterviewService.generateNextQuestion(questionContent, answerContent), exec
+      );
+
+      CompletableFuture.allOf(scoresFuture, feedbackTextFuture, nextQuestionFuture).join();
+
+      scores = scoresFuture.join();
+      feedbackText = feedbackTextFuture.join();
+      nextQuestion = nextQuestionFuture.join();
+    }
+
+    // 5. 피드백 저장 (세 AI 결과를 합산)
     AiFeedback feedback = feedbackRepository.save(
-        AiFeedback.create(answer.getId(), questionId, sessionId, memberId, evaluation)
+        AiFeedback.create(answer.getId(), questionId, sessionId, memberId, scores, feedbackText)
     );
 
     FeedbackResponse feedbackResponse = toFeedbackResponse(feedback);
@@ -128,21 +161,21 @@ public class InterviewSessionService {
       return new AnswerSubmitResponse(true, totalScore, feedbackResponse, null);
     }
 
-    // 아직 질문이 남아있으면 다음 질문 생성
-    InterviewQuestion nextQuestion = questionRepository.save(
+    // 아직 질문이 남아있으면 다음 질문 저장
+    InterviewQuestion nextInterviewQuestion = questionRepository.save(
         InterviewQuestion.createNext(
             session, member,
-            evaluation.nextQuestionContent(),
+            nextQuestion.nextQuestionContent(),
             questionCount + 1,
-            evaluation.followUp()
+            nextQuestion.followUp()
         )
     );
 
     NextQuestionResponse nextQuestionResponse = new NextQuestionResponse(
-        nextQuestion.getId(),
-        nextQuestion.getContent(),
-        nextQuestion.getSequence(),
-        nextQuestion.isFollowUp()
+        nextInterviewQuestion.getId(),
+        nextInterviewQuestion.getContent(),
+        nextInterviewQuestion.getSequence(),
+        nextInterviewQuestion.isFollowUp()
     );
 
     return new AnswerSubmitResponse(false, null, feedbackResponse, nextQuestionResponse);

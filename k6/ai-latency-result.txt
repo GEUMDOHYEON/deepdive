@@ -1,0 +1,31 @@
+========================================
+  DeepDive AI 응답 지연 측정 결과 비교
+========================================
+
+[Before: 단일 AI 호출, 7개 필드 직렬 생성]
+  [첫 질문 생성]  avg=10332ms  p95=11502ms  max=11870ms
+  [답변 평가]     avg=23144ms  p95=24831ms  max=25232ms
+  [에러율]        0.0%
+
+[After 1: 2-way 병렬 (evaluateOnly 5개 + generateNextQuestion 2개)]
+  [첫 질문 생성]  avg=7406ms   p95=8564ms   max=8731ms
+  [답변 평가]     avg=22082ms  p95=23365ms  max=23502ms
+  → evaluateOnly(5개) = 21s, generateNextQuestion(2개) = 11s → 병목은 evaluateOnly
+
+[After 2: 3-way 병렬 (evaluateScores 3개 + generateFeedbackText 2개 + generateNextQuestion 2개)]
+  [첫 질문 생성]  avg=11208ms  p95=13640ms  max=13976ms
+  [답변 평가]     avg=19023ms  p95=22680ms  max=23018ms
+  [에러율]        0.0%
+  ← 평균 4.1s 개선 (23.1s → 19.0s, 약 18% 감소)
+
+[구조 분석 (서버 로그 타이밍)]
+  Iter 1: evaluateScores=14.3s, generateFeedbackText=12.2s, nextQuestion=9.4s → 총 14.3s (39% 개선)
+  Iter 2: evaluateScores=16.9s, generateFeedbackText=23.0s, nextQuestion=10.3s → 총 23.0s (API 편차)
+  Iter 3: evaluateScores=19.6s, generateFeedbackText=16.2s, nextQuestion=11.2s → 총 19.6s (15% 개선)
+
+[결론]
+  - 3-way CompletableFuture.allOf() 병렬 실행이 정상 작동함을 확인
+  - 총 시간 = max(3개 호출)로 측정값과 일치
+  - 병목은 OpenAI API 자체 응답 편차 (10~23s/call, gpt-5-nano 기준)
+  - 최선의 경우(Iter1) 39% 개선, 평균 18% 개선
+========================================
